@@ -1,0 +1,61 @@
+#include "HX711.h"
+#include "math.h"
+#define DOUT 5  // Data pin
+#define CLK  4  // Clock pin
+HX711 scale;
+unsigned long darkStartTime = 0;  // Time when it first became dark
+unsigned long darkDuration = 0;   // How long it stayed dark in milliseconds
+bool wasDark = false;             // Keeps track if we're currently in the dark
+
+// Adjust this threshold based on your actual analog readings.
+// Use a test sketch that prints raw sensor values to pick an appropriate threshold.
+const int threshold = 50;
+
+void setup() {
+  Serial.begin(9600);
+  Serial.println("Load Cell Calibration");
+  
+  scale.begin(DOUT, CLK); // Initialize the scale with the data and clock pins
+  
+  
+  scale.set_scale(-52800.f); // Set the scale calibration factor (tune this value for accurate readings)
+  
+  scale.tare(); 
+  Serial.println("Tare complete, starting measurements...");
+}
+
+void loop() {
+  // Read from the photoresistor voltage divider
+  int sensorValue = analogRead(A0);
+  
+
+  // Check if it's above threshold => "dark"
+  if (sensorValue < threshold) {
+    // If we just transitioned into dark
+    if (!wasDark) {
+      darkStartTime = millis();  // Mark when darkness started
+      wasDark = true;
+    }
+    // If it's still dark, do nothing special here
+  }
+  // If below threshold => "light"
+  else {
+    // If we were previously in the dark, we just transitioned back to light
+    if (wasDark) {
+      darkDuration = millis() - darkStartTime; // Calculate how long it was dark
+      Serial.print("Light was OFF for: ");
+      Serial.print(darkDuration);
+      Serial.println(" ms");
+      delay(250);
+      float weight = scale.get_units(5);
+      float determinant = (weight*0.888)*(3.0/4.0)* 3.14159;
+      float distance = 2 * (pow(determinant,1.0/3.0));
+      float velocity = (distance/100.0) / (darkDuration / 1000.0);
+      float ke = (1.0/2.0)*(weight/1000.0)* pow(velocity,2.0);
+      Serial.print(ke);
+      Serial.println(" Joules");
+      wasDark = false;
+    }
+  }
+  delay(100);
+}
